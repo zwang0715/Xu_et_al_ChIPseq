@@ -1,2 +1,106 @@
 # FastQC of raw sequencing reads
 
+fastqc ~/yaru_data/fastq/*.fastq.gz
+
+# Mapping, duplicate removal, index
+
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/Ctrl_AAR_1.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/Ctrl_AAR_1.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=Ctrl_AAR_1.bam OUTPUT=Ctrl_AAR_1.nodup.bam \
+METRICS_FILE=Ctrl_AAR_1.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/Ctrl_AAR_1.nodup.bam
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/Ctrl_AAR_2.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/Ctrl_AAR_2.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=Ctrl_AAR_2.bam OUTPUT=Ctrl_AAR_2.nodup.bam \
+METRICS_FILE=Ctrl_AAR_2.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/Ctrl_AAR_2.nodup.bam
+
+
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/Ctrl_input_1.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/Ctrl_input_1.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=Ctrl_input_1.bam OUTPUT=Ctrl_input_1.nodup.bam \
+METRICS_FILE=Ctrl_input_1.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/Ctrl_input_1.nodup.bam
+
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/Ctrl_input_3.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/Ctrl_input_3.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=Ctrl_input_3.bam OUTPUT=Ctrl_input_3.nodup.bam \
+METRICS_FILE=Ctrl_input_3.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/Ctrl_input_3.nodup.bam
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/KD_AAR_1.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/KD_AAR_1.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=KD_AAR_1.bam OUTPUT=KD_AAR_1.nodup.bam \
+METRICS_FILE=KD_AAR_1.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/KD_AAR_1.nodup.bam
+
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/KD_AAR_2.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/KD_AAR_2.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=KD_AAR_2.bam OUTPUT=KD_AAR_2.nodup.bam \
+METRICS_FILE=KD_AAR_2.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/KD_AAR_2.nodup.bam
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/KD_input_1.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/KD_input_1.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=KD_input_1.bam OUTPUT=KD_input_1.nodup.bam \
+METRICS_FILE=KD_input_1.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/KD_input_1.nodup.bam
+
+
+bowtie2 -p 16 --very-sensitive -x ~/bowtie2_indexes/hg38 -U ~/yaru_data/fastq/KD_input_3.fastq.gz |samtools view -u - |samtools sort -o ~/yaru_data/bam/KD_input_3.bam -
+
+java -jar ~/software/picard_v2.26.11/picard.jar MarkDuplicates \
+INPUT=KD_input_3.bam OUTPUT=KD_input_3.nodup.bam \
+METRICS_FILE=KD_input_3.metrics.txt REMOVE_DUPLICATES=true ASSUME_SORTED=true TMP_DIR=temp
+
+samtools index ~/yaru_data/bam/KD_input_3.nodup.bam
+
+# BAM RPKM Genome Browser Tracks
+
+cd ~/yaru_data/bam/
+
+for s in `ls -l *.nodup.bam | awk '{print $9}'`
+do
+bamCoverage -p 10 -e 100 -b $s -o ./bigwig_bamcoverage/$s.bw --normalizeUsingRPKM
+done
+
+# Peak Calling
+
+macs2 callpeak -t ./bam/Ctrl_AAR_1.nodup.bam ./bam/Ctrl_AAR_2.nodup.bam -c ./bam/Ctrl_input_1.nodup.bam -f BAM -g hs --outdir ./peakcall -n Ctrl_AAR_merge -q 0.01 &
+
+macs2 callpeak -t ./bam/KD_AAR_1.nodup.bam ./bam/KD_AAR_2.nodup.bam -c ./bam/KD_input_1.nodup.bam -f BAM -g hs --outdir ./peakcall -n KD_AAR_merge -q 0.01 &
+
+
+# Peak Annotation, Motif Analysis
+
+bedtools intersect -a Ctrl_AK27AC_consensus.bed -b KD_AK27AC_consensus.bed -v > ./Ctrl_AK27AC_unique.bed
+
+bedtools intersect -a KD_AK27AC_consensus.bed -b Ctrl_AK27AC_consensus.bed -v > ./KD_AK27AC_unique.bed
+
+bedtools intersect -a Ctrl_AK27AC_consensus.bed -b KD_AK27AC_consensus.bed > ./Ctrl_KD_AK27AC_common.bed
+
+annotatePeaks.pl Ctrl_AAR_unique.bed hg38 > Ctrl_AAR_unique.anno.txt
+annotatePeaks.pl KD_AAR_unique.bed hg38 > KD_AAR_unique.anno.txt
+annotatePeaks.pl Ctrl_KD_AAR_common.bed hg38 > Ctrl_KD_AAR_common.anno.txt
+
+findMotifsGenome.pl Ctrl_AAR_unique.anno.txt hg38 Ctrl_AAR_unique_motif/ -size 200 -mask
+findMotifsGenome.pl KD_AAR_unique.anno.txt hg38 KD_AAR_unique_motif/ -size 200 -mask
