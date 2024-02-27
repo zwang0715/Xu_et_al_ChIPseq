@@ -1,0 +1,322 @@
+##########################################################
+# The data analysis pipeline consists of both Python code 
+# and some basic SBATCH script (and some R code). 
+# For SBATCH script we only show what modules to load 
+# as well as the command 
+# For the Python environment, it's pretty basic 
+# You just need numpy and pandas with relatively new versions 
+##########################################################
+# NOTE that the code here is only suitable for 
+# single-end experiments NOT pair-end experiments 
+
+##########################################################
+# Quality control 
+##########################################################
+# PYTHON code 
+import os 
+import numpy as np 
+import pandas as pd 
+
+# We assume that all raw data are contained within one folder 
+data_dir = "/PATH/TO/FASTQ.GZ/FILES"
+output_dir = "/PATH/TO/FASTQC_OUTPUT"
+data_files = np.sort([f for f in os.listdir(data_dir) if (not f.startswith(".")) and (f.endswith(".fastq.gz"))])
+
+for d in data_files:
+    U = os.path.join(data_dir, d)
+    command = "fastqc -t 6 -o {output_dir} {U}".format(output_dir=output_dir,
+                                                       U=U)
+    os.system(command)
+
+# SBATCH 
+module load fastqc/0.11.8 python/3.10.x-anaconda
+python /PATH/TO/FASTQC_CODE.py
+
+
+##########################################################
+# Adaptor trimming 
+##########################################################
+# PYTHON code 
+import os 
+import numpy as np 
+data_dir = "/PATH/TO/FASTQ.GZ/FILES"
+output_dir = "/PATH/TO/TRIM_OUTPUT"
+data_files = np.sort([f for f in os.listdir(data_dir) if (not f.startswith(".")) and (f.endswith(".fastq.gz"))])
+# CAUTION the adaptor information depends on each experiment and the sequencing company
+# For pair-end experiment, you can have two adapters 
+os.chdir(data_dir)
+for d in data_files:
+    U = d
+    command = "trim_galore -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA {U}".format(U=U)
+    os.system(command)
+    report_file = d + "_trimming_report.txt"
+    report_U = os.path.join(data_dir, report_file)
+    command = "mv {trimming_report} {output_dir}".format(trimming_report=report_U,
+                                                         output_dir=output_dir)
+    os.system(command)
+    trimmed_data_file = d.replace(".fastq.gz", "")
+    trimmed_data_file = trimmed_data_file + "_trimmed.fq.gz"
+    trimmed_U = os.path.join(data_dir, trimmed_data_file)
+    command = "mv {trimmed_U} {output_dir}".format(trimmed_U=trimmed_U,
+                                                   output_dir=output_dir)
+    os.system(command)
+
+# SBATCH code 
+module load pigz/2.4 python/3.7.x-anaconda trimgalore/0.6.4
+python /PATH/TO/TRIM_CODE.py
+
+
+##########################################################
+# Align to human genome 
+##########################################################
+# PYTHON code 
+# NOTE here we use a for loop to loop through all files 
+# Of course you can easily parallelize this 
+import os 
+import numpy as np 
+data_dir = "/PATH/TO/TRIM_OUTPUT"
+bowtie_output_dir = "/PATH/TO/BOWTIE_OUTPUT/"
+hg38_dir = "/PATH/TO/hg38/"
+
+file_dirs = [f for f in os.listdir(data_dir) if f.endswith(".fq.gz")]
+
+for f in file_dirs:
+    U = os.path.join(data_dir, f)
+    sam = f.replace(".fq.gz", "")
+    command = "bowtie2 --very-sensitive -X 2000 -x {hg38_dir}hg38 -U {U} -S /PATH/TO/BOWTIE_OUTPUT/{sam}.sam".format(hg38_dir=hg38_dir,
+                                                                                                                    U=U,
+                                                                                                                    sam=sam)
+    os.system(command)
+
+
+os.chdir(bowtie_output_dir)
+output_dir = "/PATH/TO/SAM_OUTPUT"
+sam_files = [f for f in os.listdir(".") if (not f.startswith(".")) and (f.endswith(".sam"))]
+for sf in sam_files:
+    file = sf.replace(".sam", "")
+    command = "samtools view -bS {file}.sam > {file}.bam".format(file=file)
+    print(command)
+    os.system(command)
+    command = "samtools sort -O bam -o sorted_{file}.bam {file}.bam".format(file=file)
+    print(command)
+    os.system(command)
+    command = "samtools index sorted_{file}.bam".format(file=file)
+    print(command)
+    os.system(command)
+
+
+# SBATCH 
+module load bowtie2/2.4.2 python/3.10.x-anaconda
+python /PATH/TO/BOWTIE_CODE.py
+
+
+##########################################################
+# Peak calling 
+##########################################################
+# PYTHON code 
+import os 
+import numpy as np
+os.chdir("/PATH/TO/SAMTOOLS_OUTPUT")
+bam_files = [f for f in os.listdir(".") if (f.startswith("sorted")) and (f.endswith(".bam"))]
+
+# This part differ from experiment to experiment 
+# What we are trying to accomplish here is to 
+# construct a mapping from inputs to treatments 
+input_treatment = {"INPUT1": ["TREATMENT1_1", "TREATMENT1_2"],
+                   "INPUT2": ["TREATMENT2_1", "TREATMENT2_2"]}
+
+exp_design = []
+for f in input_treatment:
+    input_file = [t for t in bam_files if f in t][0]
+    treatments = [c for c in bam_files if np.any([a in c for a in input_treatment[f]])]
+    
+    exp_design.append([treatments, input_file, f])
+
+for exp_d in exp_design:
+    treatment_files = exp_d[0]
+    control_file = exp_d[1]
+    output_name = "Sample"+exp_d[2]
+    command = "macs2 callpeak -t {treatment_file1} {treatment_file2} -c {control_file} -f BAM -g hs -n {output_name} --outdir /PATH/TO/MACS_OUTPUT -p 0.01".format(treatment_file1=treatment_files[0],
+                                                                                                                                                                  treatment_file2=treatment_files[1],
+                                                                                                                                                                  control_file=control_file,
+                                                                                                                                                                  output_name=output_name)
+    os.system(command)
+
+# SBATCH 
+module load macs/2.1.2 python/3.10.x-anaconda
+python /PATH/TO/MACS_CODE.py
+
+
+##########################################################
+# Feature counts 
+##########################################################
+# PYTHON code 
+import os 
+
+macs_dir = "/PATH/TO/MACS"
+intersect_dir = "/PATH/TO/CONSENSUS_PEAK"
+samtools_dir = "/PATH/TO/SAMTOOLS"
+feature_count_dir = "/PATH/TO/FEATURECOUT_OUTPUT"
+
+
+input_treatment = {"INPUT1": ["TREATMENT1_1", "TREATMENT1_2"],
+                   "INPUT2": ["TREATMENT2_1", "TREATMENT2_2"]}
+
+
+for e_id in exp_design:
+    macs_files = [f for f in os.listdir(macs_dir) if (e_id in f) and (not f.startswith(".")) and (f.endswith("narrowPeak"))]
+    exp_design[e_id].append(macs_files)
+    
+    bam_files = [f for f in os.listdir(samtools_dir) if ((e_id.replace("Sample", "") in f) or (input_treatment[e_id.replace("Sample", "")][0] in f) or (input_treatment[e_id.replace("Sample", "")][1] in f)) and (f.startswith("sorted")) and (f.endswith(".bam"))]
+    exp_design[e_id].append(bam_files)
+
+
+for e_id in exp_design:
+    command = "cp {peak_in_macs}.narrowPeak {peak_in_intersect}.narrowPeak".format(peak_in_macs=os.path.join(macs_dir, e_id+"_peaks"),
+                                                                                   peak_in_intersect=os.path.join(intersect_dir, e_id))
+    os.system(command)
+    command = """awk 'OFS="\\t" {{print $1"-"$2+1"-"$3, $1, $2+1, $3, "+"}}' {consensus_peak}.narrowPeak> {consensus_peak}.saf""".format(consensus_peak=os.path.join(intersect_dir, e_id))
+    os.system(command)
+    for bam in exp_design[e_id][1]:
+        bam_file = bam.replace(".bam", "")
+        command = "featureCounts -p -a {consensus_peak}.saf -F SAF -o {bamfile_out}.out.txt {bamfile_in}.bam".format(consensus_peak=os.path.join(intersect_dir, e_id),
+                                                                                                              bamfile_out= os.path.join(feature_count_dir, bam_file),
+                                                                                                              bamfile_in = os.path.join(samtools_dir, bam_file))
+        os.system(command)
+
+
+##########################################################
+# Annotation 
+##########################################################
+# R code 
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+library(ChIPseeker)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+files = list.files("/PATH/TO/FEATURECOUNT_OUTPUT",
+                   pattern=".bed", full.names = T)
+files = as.list(files)
+
+peakAnnoList = lapply(files, annotatePeak, tssRegion = c(-3000,3000),
+                      TxDb=txdb, annoDb="org.Hs.eg.db")
+for(i in 1:length(files))
+{
+  annoTable = as.data.frame(peakAnnoList[[i]]@anno)
+  file_name = strsplit(files[[i]], split="/")
+  file_name = file_name[[1]][length(file_name[[1]])]
+  
+  write.csv(annoTable,
+            file=paste0("/PATH/TO/FEATURECOUNT_OUTPUT",
+                        gsub(".bed", "",file_name),"_annotation.csv"),
+            row.names = F)
+}
+
+
+##########################################################
+# Visualization 1: bigwig without control files 
+##########################################################
+# PYTHON code 
+import os 
+import numpy as np
+
+bam_files = [f for f in os.listdir(".") if (f.startswith("sorted")) and (f.endswith(".bam"))]
+input_treatment = {"INPUT1": ["TREATMENT1_1", "TREATMENT1_2"],
+                   "INPUT2": ["TREATMENT2_1", "TREATMENT2_2"]}
+exp_design = []
+for f in input_treatment:
+    input_file = [t for t in bam_files if f in t][0]
+    treatments = [c for c in bam_files if np.any([a in c for a in input_treatment[f]])]
+    
+    exp_design.append([treatments, input_file, f])
+    
+for exp_d in exp_design:
+    treatment_files = exp_d[0]
+    control_file = exp_d[1]
+    
+    command = "bamCoverage -b {treatment_file}  -o /PATH/TO/BIGWIG/{output_name}.bw --normalizeUsing RPKM -e 100 -p 10".format(treatment_file=treatment_files[0],
+                                                                                                                            output_name=treatment_files[0].replace(".bam", ""))
+    os.system(command)
+    command = "bamCoverage -b {treatment_file}  -o /PATH/TO/BIGWIG/{output_name}.bw --normalizeUsing RPKM -e 100 -p 10".format(treatment_file=treatment_files[1],
+                                                                                                                            output_name=treatment_files[1].replace(".bam", ""))
+    os.system(command)
+    command = "bamCoverage -b {control_file}  -o /PATH/TO/BIGWIG/{output_name}.bw --normalizeUsing RPKM -e 100 -p 10".format(control_file=control_file,
+                                                                                                                            output_name=control_file.replace(".bam", ""))
+    os.system(command)
+
+# SBATCH 
+module load deeptools/3.5.0 gcc/6.3.0 python/3.10.x-anaconda
+python /PATH/TO/BIGWIG_CODE.py
+
+
+##########################################################
+# Visualization 2: bigwig with control files 
+##########################################################
+# PYTHON code 
+import os 
+import numpy as np
+
+bam_files = [f for f in os.listdir(".") if (f.startswith("sorted")) and (f.endswith(".bam"))]
+input_treatment = {"INPUT1": ["TREATMENT1_1", "TREATMENT1_2"],
+                   "INPUT2": ["TREATMENT2_1", "TREATMENT2_2"]}
+exp_design = []
+for f in input_treatment:
+    input_file = [t for t in bam_files if f in t][0]
+    treatments = [c for c in bam_files if np.any([a in c for a in input_treatment[f]])]
+    
+    exp_design.append([treatments, input_file, f])
+
+for exp_d in exp_design:
+    treatment_files = exp_d[0]
+    control_file = exp_d[1]
+    command = "bamCompare -b1 {treatment_file} -b2 {control_file} -o /PATH/TO/BIGWIG/{output_name}.bw --normalizeUsing RPKM  -e 100 --scaleFactorsMethod None -p 10".format(treatment_file=treatment_files[0],
+                                                                                                                                                                        control_file=control_file,
+                                                                                                                                                                        output_name=treatment_files[0].replace(".bam", ""))
+    os.system(command)
+    command = "bamCompare -b1 {treatment_file} -b2 {control_file} -o /PATH/TO/BIGWIG/{output_name}.bw --normalizeUsing RPKM -e 100 --scaleFactorsMethod None -p 10".format(treatment_file=treatment_files[1],
+                                                                                                                                                                        control_file=control_file,
+                                                                                                                                                                        output_name=treatment_files[1].replace(".bam", ""))
+    os.system(command)
+
+# SBATCH 
+module load deeptools/3.5.0 gcc/6.3.0 python/3.10.x-anaconda
+python /PATH/TO/BIGWIG_CODE.py
+
+##########################################################
+# Metaplot & Profiling 
+##########################################################
+# PYTHON code 
+import os 
+import numpy as np
+import pandas as pd 
+
+intersect_dir = "/PATH/TO/CONENSUS_PEAKS"
+samtools_dir = "/PATH/TO/SAMTOOLS_OUTPUT"
+feature_count_dir = "/PATH/TO/FEATURECOUNTS_OUTPUT"
+
+
+bed_file = os.path.join(intersect_dir ,'gene_list.bed')
+e_id = "YOUR_EXPERIMENT_ID"
+
+bigwig_files_wo_control = ""
+for t in range(1, 3):
+    for ty in ["control", 'treatment']:
+        bigwig_files_wo_control += " " + [os.path.join("/PATH/TO/BIGWIG_FILES", f) for f in os.listdir("/PATH/TO/BIGWIG_FILES") if (ty+"_"+str(t) in f) and (not f.startswith("."))][0]
+
+
+command = "computeMatrix reference-point --referencePoint TSS -b 3000 -a 3000 -R {bed_file} -S {bigwig_files} --skipZeros -o {e_id}/wo_control.gz --outFileSortedRegions {e_id}/results.bed".format(bed_file=bed_file,
+                                                                                                                                                                                        bigwig_files=bigwig_files_wo_control,
+                                                                                                                                                                                        e_id=e_id)
+os.system(command)
+
+
+command = 'plotHeatmap -m {e_id}/results.gz -out {e_id}/results_heatmap.pdf --colorList "white, green" "white, orange" "white, green" "white, orange" --interpolationMethod bilinear --zMin 0 --yMin 1 --yMax 7'.format(e_id=e_id)
+os.system(command)
+command = 'plotProfile -m {e_id}/results.gz -out {e_id}/results_profile.pdf'.format(e_id=e_id)
+os.system(command)
+
+# SBATCH 
+module load deeptools/3.5.0 gcc/6.3.0 python/3.10.x-anaconda
+python /PATH/TO/METAPLOT_CODE.py
+
