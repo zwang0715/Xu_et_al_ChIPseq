@@ -1,0 +1,80 @@
+ANNOTATE_BOOLEAN_PEAKS:
+  sed: '4.7'
+BAM_FILTER:
+  bamtools: 2.5.2
+  samtools: 1.15.1
+BEDTOOLS_GENOMECOV:
+  bedtools: 2.30.0
+CUSTOM_DUMPSOFTWAREVERSIONS:
+  python: 3.10.5
+  yaml: '6.0'
+CUSTOM_GETCHROMSIZES:
+  custom: 1.15.1
+DEEPTOOLS_COMPUTEMATRIX:
+  deeptools: 3.5.1
+DEEPTOOLS_PLOTFINGERPRINT:
+  deeptools: 3.5.1
+DEEPTOOLS_PLOTHEATMAP:
+  deeptools: 3.5.1
+DEEPTOOLS_PLOTPROFILE:
+  deeptools: 3.5.1
+FASTQC:
+  fastqc: 0.11.9
+FRIP_SCORE:
+  bedtools: 2.30.0
+  samtools: 1.15.1
+GENOME_BLACKLIST_REGIONS:
+  bedtools: 2.30.0
+GTF2BED:
+  perl: 5.26.2
+HOMER_ANNOTATEPEAKS_CONSENSUS:
+  homer: '4.11'
+HOMER_ANNOTATEPEAKS_MACS2:
+  homer: '4.11'
+IGV:
+  python: 3.8.3
+MACS2_CALLPEAK:
+  macs2: 2.2.7.1
+MACS2_CONSENSUS:
+  python: 3.10.0
+  r-base: 4.1.1
+PHANTOMPEAKQUALTOOLS:
+  phantompeakqualtools: 1.2.2
+PICARD_COLLECTMULTIPLEMETRICS:
+  picard: 2.27.4-SNAPSHOT
+PICARD_MARKDUPLICATES:
+  picard: 2.27.4-SNAPSHOT
+PICARD_MERGESAMFILES:
+  picard: 2.27.4-SNAPSHOT
+PLOT_HOMER_ANNOTATEPEAKS:
+  r-base: 4.0.3
+PLOT_MACS2_QC:
+  r-base: 4.0.3
+PRESEQ_LCEXTRAP:
+  preseq: 3.1.1
+SAMPLESHEET_CHECK:
+  python: 3.8.3
+SAMTOOLS_FLAGSTAT:
+  samtools: 1.15.1
+SAMTOOLS_IDXSTATS:
+  samtools: 1.15.1
+SAMTOOLS_INDEX:
+  samtools: 1.15.1
+SAMTOOLS_SORT:
+  samtools: 1.15.1
+SAMTOOLS_STATS:
+  samtools: 1.15.1
+STAR_ALIGN:
+  star: 2.6.1d
+STAR_GENOMEGENERATE:
+  star: 2.6.1d
+SUBREAD_FEATURECOUNTS:
+  subread: 2.0.1
+TRIMGALORE:
+  cutadapt: '3.4'
+  trimgalore: 0.6.7
+UCSC_BEDGRAPHTOBIGWIG:
+  ucsc: '377'
+Workflow:
+  Nextflow: 23.04.1
+  nf-core/chipseq: 2.0.0
